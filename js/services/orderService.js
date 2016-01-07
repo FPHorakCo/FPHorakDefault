@@ -1,4 +1,4 @@
-four51.app.factory('Order', ['$resource', '$rootScope', '$451', 'Security', 'Error', function($resource, $rootScope, $451, Security, Error) {
+four51.app.factory('Order', ['$resource', '$rootScope', '$451', 'Security', 'Error', 'User', function($resource, $rootScope, $451, Security, Error, User) {
 	var _multipleShip = false;
 	function _then(fn, data, broadcast) {
 		if (angular.isFunction(fn))
@@ -7,7 +7,7 @@ four51.app.factory('Order', ['$resource', '$rootScope', '$451', 'Security', 'Err
 			$rootScope.$broadcast('event:orderUpdate', data);
 	}
 
-	function _extend(order) {
+	function _extend(order, user) {
 		order.isEditable = order.Status == 'Unsubmitted' || order.Status == 'Open' || order.Status == 'AwaitingApproval';
 		angular.forEach(order.LineItems, function(item) {
 			item.OriginalQuantity = item.Quantity; //needed to validate qty changes compared to available quantity
@@ -44,16 +44,21 @@ four51.app.factory('Order', ['$resource', '$rootScope', '$451', 'Security', 'Err
 				}
 			}
 		});
+
+        order.BillingEnabled = (order.Total > 0 || (order.Total == 0 && user.Company.BillZeroPriceOrders));
+        //order.PaymentMethod = order.BillingEnabled ? order.PaymentMethod : 'Undetermined';
 	}
 
 	var _get = function(id, success, suppress) {
-		var currentOrder = store.get('451Cache.Order.' + id);
-		currentOrder ? (function() { _extend(currentOrder);	_then(success, currentOrder); })() :
-			$resource($451.api('order/:id'), { id: '@id' }).get({ id: id }).$promise.then(function(o) {
-				_extend(o);
-				store.set('451Cache.Order.' + id, o);
-				_then(success, o, suppress);
-			});
+        User.get(function(user) {
+            var currentOrder = store.get('451Cache.Order.' + id);
+            currentOrder ? (function() { _extend(currentOrder, user);	_then(success, currentOrder); })() :
+                $resource($451.api('order/:id'), { id: '@id' }).get({ id: id }).$promise.then(function(o) {
+                    _extend(o, user);
+                    store.set('451Cache.Order.' + id, o);
+                    _then(success, o, suppress);
+                });
+        });
 	};
 
 	var _save = function(order, success, error) {
@@ -61,8 +66,10 @@ four51.app.factory('Order', ['$resource', '$rootScope', '$451', 'Security', 'Err
 			function(o) {
 				store.set('451Cache.Order.' + o.ID, o);
 				store.remove('451Cache.User' + $451.apiName);
-				_extend(o);
-				_then(success, o);
+                User.get(function(user) {
+                    _extend(o, user);
+                    _then(success, o);
+                });
 			},
 			function(ex) {
 				error(Error.format(ex));
@@ -88,8 +95,10 @@ four51.app.factory('Order', ['$resource', '$rootScope', '$451', 'Security', 'Err
 			function(o) {
 				store.set('451Cache.Order.' + o.ID);
 				store.remove('451Cache.User' + $451.apiName);
-				_extend(o);
-				_then(success,o);
+                User.get(function(user) {
+                    _extend(o, user);
+                    _then(success, o);
+                });
 			},
 			function(ex) {
 				error(Error.format(ex));
@@ -102,8 +111,10 @@ four51.app.factory('Order', ['$resource', '$rootScope', '$451', 'Security', 'Err
 			function(o) {
 				store.set('451Cache.Order.' + o.ID);
 				store.remove('451Cache.User' + $451.apiName);
-				_extend(o);
-				_then(success, o);
+                User.get(function(user) {
+                    _extend(o, user);
+                    _then(success, o);
+                });
 			},
 			function(ex) {
 				error(Error.format(ex));
@@ -114,8 +125,11 @@ four51.app.factory('Order', ['$resource', '$rootScope', '$451', 'Security', 'Err
 	var _approve = function(order, success, error) {
 		$resource($451.api('order/approve/:id'), {'id': order.ID}, { approve: { method: 'PUT', params: { 'comment': order.ApprovalComment}}}).approve().$promise.then(
 			function(o) {
-				_extend(o);
-				_then(success, o);
+                store.set('451Cache.Order.' + o.ID, o);
+                User.get(function(user) {
+                    _extend(o, user);
+                    _then(success, o);
+                });
 			},
 			function(ex) {
 				error(Error.format(ex));
@@ -126,8 +140,11 @@ four51.app.factory('Order', ['$resource', '$rootScope', '$451', 'Security', 'Err
 	var _decline = function(order, success, error) {
 		$resource($451.api('order/decline/:id'), {'id': order.ID}, { decline: { method: 'PUT', params: { 'comment': order.ApprovalComment}}}).decline().$promise.then(
 			function(o) {
-				_extend(o);
-				_then(success, o);
+                store.set('451Cache.Order.' + o.ID, o);
+                User.get(function(user) {
+                    _extend(o, user);
+                    _then(success, o);
+                });
 			},
 			function(ex) {
 				error(Error.format(ex));
@@ -141,8 +158,10 @@ four51.app.factory('Order', ['$resource', '$rootScope', '$451', 'Security', 'Err
 			function(o) {
 				if (o.ID) {
 					store.set('451Cache.Order.' + o.ID, o);
-					_extend(o);
-					_then(success, o);
+                    User.get(function(user) {
+                        _extend(o, user);
+                        _then(success, o);
+                    });
 				} else {
 					store.remove('451Cache.User' + $451.apiName);
 					_then(success, null);
@@ -166,7 +185,7 @@ four51.app.factory('Order', ['$resource', '$rootScope', '$451', 'Security', 'Err
 		return this;
 	};
 
-	var _calcdisc = function(order, acct) {
+	/*var _calcdisc = function(order, acct) {
 		if (acct == null) return order.Total;
 		var discount = 0;
 		if (acct.AccountType.MaxPercentageOfOrderTotal != 100) {
@@ -178,6 +197,32 @@ four51.app.factory('Order', ['$resource', '$rootScope', '$451', 'Security', 'Err
 		}
 		else
 			discount = acct.Balance;
+
+		return order.Total - discount;
+	};*/
+
+	var _calcdisc = function(order, acct) {
+		if (acct == null) return order.Total;
+		var discount = 0;
+		if (acct.AccountType.MaxPercentageOfOrderTotal && acct.AccountType.MaxPercentageOfOrderTotal != 100) {
+
+			console.log('SpendingAcctBalance:' + acct.Balance); //100
+
+			var total = order.Total;
+			console.log('Total (orderTotal):' + total); //35
+
+			var discountAmount = '0.' + acct.AccountType.MaxPercentageOfOrderTotal;
+			console.log('Discount Amount:' + discountAmount);
+
+			discount = total * discountAmount;
+			console.log('Discount:' + discount);
+
+		}
+		else {
+			// this is correct and applies when the AccountType.MaxPercentageOfOrderTotal is 100% and works fine even if discount is more than the order
+			discount = acct.Balance;
+			console.log('% of Order Total is 100%:' + discount);
+		}
 
 		return order.Total - discount;
 	};
