@@ -19,6 +19,14 @@ function ($scope, $routeParams, $location, $filter, $rootScope, $451, Analytics,
     function submitOrder() {
 	    $scope.displayLoadingIndicator = true;
 	    $scope.errorMessage = null;
+
+		angular.forEach($scope.currentOrder.LineItems, function(lineitem, index){
+			if(index !== 0){
+				lineitem.ShipFirstName = $scope.currentOrder.LineItems[0].ShipFirstName;
+				lineitem.ShipLastName = $scope.currentOrder.LineItems[0].ShipLastName;
+			}
+		});
+
         Order.submit($scope.currentOrder,
 	        function(data) {
 //				if ($scope.user.Company.GoogleAnalyticsCode) {
